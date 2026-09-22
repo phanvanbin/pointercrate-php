@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /* 
-hi
+hi assssssq
 */
 require dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/includes/updater.php';
