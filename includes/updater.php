@@ -431,8 +431,10 @@ function app_updater_build_plan(?string $repository = null, ?string $ref = null)
         }
 
         if ($stateMatches && $previousSha !== null && $remoteSha === $previousSha) {
-            $unchanged++;
-            continue;
+            if ($localSha !== null) {
+                $unchanged++;
+                continue;
+            }
         }
 
         if (
@@ -487,6 +489,16 @@ function app_updater_build_plan(?string $repository = null, ?string $ref = null)
     sort($conflicts, SORT_STRING);
     sort($deleted, SORT_STRING);
 
+    $baselineDifferenceCount = 0;
+    if (!$stateMatches) {
+        // There is no reliable way to tell whether an existing file is older or locally newer.
+        // Adopt the current remote commit as the baseline and only apply future remote changes.
+        $baselineDifferenceCount = count($changed);
+        $changed = [];
+        $deleted = [];
+        $conflicts = [];
+    }
+
     $plan = $remote + [
         'changed' => $changed,
         'deleted' => $deleted,
@@ -495,9 +507,10 @@ function app_updater_build_plan(?string $repository = null, ?string $ref = null)
         'installed_commit' => $stateMatches ? (string) ($state['commit_sha'] ?? '') : '',
         'update_available' => $changed !== [] || $deleted !== [],
         'first_sync' => !$stateMatches,
+        'baseline_difference_count' => $baselineDifferenceCount,
     ];
 
-    if (!$stateMatches && $changed === [] && $deleted === [] && $conflicts === []) {
+    if (!$stateMatches || (!$plan['update_available'] && $plan['conflicts'] === [])) {
         app_updater_write_state_from_plan($plan);
     }
 
@@ -552,6 +565,34 @@ function app_updater_lint_php_file(string $path): void
     $status = proc_close($process);
     if ($status !== 0) {
         throw new RuntimeException('Downloaded PHP file failed syntax check: ' . basename($path) . '. ' . trim($output));
+    }
+}
+
+function app_updater_activate_file(
+    string $stagedPath,
+    string $destination,
+    string $expectedSha,
+    bool $hadOriginal
+): void {
+    $temporary = $destination . '.update-' . bin2hex(random_bytes(4));
+    if (!copy($stagedPath, $temporary)) {
+        throw new RuntimeException('Could not prepare replacement for ' . basename($destination) . '.');
+    }
+
+    $activated = false;
+    if (PHP_OS_FAMILY === 'Windows' && $hadOriginal) {
+        // Windows can keep the executing PHP script open, which prevents unlink + rename.
+        $activated = copy($temporary, $destination);
+        @unlink($temporary);
+    } else {
+        $activated = rename($temporary, $destination);
+        if (!$activated) {
+            @unlink($temporary);
+        }
+    }
+
+    if (!$activated || app_updater_local_blob_sha($destination) !== $expectedSha) {
+        throw new RuntimeException('Could not activate ' . basename($destination) . '. Check file permissions.');
     }
 }
 
@@ -657,19 +698,8 @@ function app_updater_install(): array
                 }
             }
 
-            $temporary = $destination . '.update-' . bin2hex(random_bytes(4));
-            if (!copy($stagedPath, $temporary)) {
-                throw new RuntimeException('Could not prepare replacement for ' . $path . '.');
-            }
             $applied[] = ['path' => $path, 'had_original' => $hadOriginal];
-            if ($hadOriginal && !unlink($destination)) {
-                @unlink($temporary);
-                throw new RuntimeException('Could not replace ' . $path . '. Check file permissions.');
-            }
-            if (!rename($temporary, $destination)) {
-                @unlink($temporary);
-                throw new RuntimeException('Could not activate ' . $path . '.');
-            }
+            app_updater_activate_file($stagedPath, $destination, (string) $file['sha'], $hadOriginal);
             if (function_exists('opcache_invalidate')) {
                 @opcache_invalidate($destination, true);
             }

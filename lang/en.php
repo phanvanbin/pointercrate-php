@@ -678,7 +678,7 @@ return [
     'admin.updates_changed_files' => 'New or changed',
     'admin.updates_deleted_files' => 'Outdated files',
     'admin.updates_conflicts' => 'Conflicts',
-    'admin.updates_first_sync' => 'This is the first sync. Review the file list before installing; every replaced file will be backed up.',
+    'admin.updates_first_sync' => 'Update tracking is now initialized at the latest commit. Existing files were not replaced; future commits can be installed incrementally.',
     'admin.updates_conflict_help' => 'Some source files were edited locally after the previous update. Resolve those conflicts manually before updating.',
     'admin.updates_current' => 'This installation is up to date.',
     'admin.updates_ready' => 'An update is ready to install.',

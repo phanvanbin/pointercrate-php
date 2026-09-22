@@ -3340,11 +3340,12 @@ render_header(t('admin.title'), 'admin');
             </article>
         </div>
 
-        <?php if (!empty($updatePlan['first_sync']) && $changedFiles !== []): ?>
+        <?php if (!empty($updatePlan['first_sync'])): ?>
             <p class="info-yellow admin-update-message"><?= e(t('admin.updates_first_sync')) ?></p>
         <?php endif; ?>
 
-        <?php if ($conflictFiles !== []): ?>
+        <?php if (!empty($updatePlan['first_sync'])): ?>
+        <?php elseif ($conflictFiles !== []): ?>
             <p class="info-red admin-update-message"><?= e(t('admin.updates_conflict_help')) ?></p>
         <?php elseif (empty($updatePlan['update_available'])): ?>
             <p class="info-green admin-update-message"><?= e(t('admin.updates_current')) ?></p>

@@ -678,7 +678,7 @@ return [
     'admin.updates_changed_files' => 'File mới hoặc đã đổi',
     'admin.updates_deleted_files' => 'File đã lỗi thời',
     'admin.updates_conflicts' => 'Xung đột',
-    'admin.updates_first_sync' => 'Đây là lần đồng bộ đầu tiên. Hãy xem danh sách file trước khi cài; mọi file bị thay thế đều được sao lưu.',
+    'admin.updates_first_sync' => 'Đã khởi tạo theo dõi cập nhật tại commit mới nhất. Các file hiện có không bị thay thế; những commit tiếp theo sẽ được cập nhật tăng dần.',
     'admin.updates_conflict_help' => 'Một số file nguồn đã được sửa cục bộ sau lần cập nhật trước. Hãy xử lý các xung đột đó trước khi cập nhật.',
     'admin.updates_current' => 'Bản cài đặt hiện đã mới nhất.',
     'admin.updates_ready' => 'Có bản cập nhật sẵn sàng để cài.',
