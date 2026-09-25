@@ -1,8 +1,7 @@
 <?php
+// Hide errors from users, but log them for debugging
 declare(strict_types=1);
-/* 
-hi assssssq
-*/
+
 require dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/includes/updater.php';
 
@@ -688,7 +687,12 @@ function admin_notify_submission_submitter_discord(array $submission, string $de
 if (method_is_post()) {
     $action = (string) ($_POST['action'] ?? '');
 
-    if (in_array($action, ['save_update_source', 'install_update'], true)) {
+    if (in_array($action, [
+        'save_update_source',
+        'install_update',
+        'resolve_update_conflict_local',
+        'resolve_update_conflict_remote',
+    ], true)) {
         if (!has_owner_access()) {
             flash('error', t('flash.no_permission'));
             redirect(admin_section_url('admin-updates'));
@@ -707,6 +711,28 @@ if (method_is_post()) {
                 flash('success', t('admin.updates_source_saved'));
             } else {
                 flash('error', t('admin.updates_source_failed'));
+            }
+            redirect(admin_section_url('admin-updates'));
+        }
+
+        if (in_array($action, ['resolve_update_conflict_local', 'resolve_update_conflict_remote'], true)) {
+            $path = (string) ($_POST['conflict_path'] ?? '');
+            $remoteSha = (string) ($_POST['remote_sha'] ?? '');
+            try {
+                if ($action === 'resolve_update_conflict_remote') {
+                    $resolvedPath = app_updater_use_remote_conflict(
+                        $path,
+                        $remoteSha,
+                        (string) ($_POST['commit_sha'] ?? ''),
+                        (int) ($_POST['remote_size'] ?? 0)
+                    );
+                    flash('success', t('admin.updates_conflict_used_remote', ['file' => $resolvedPath]));
+                } else {
+                    $resolvedPath = app_updater_accept_local_conflict($path, $remoteSha);
+                    flash('success', t('admin.updates_conflict_kept_local', ['file' => $resolvedPath]));
+                }
+            } catch (Throwable $throwable) {
+                flash('error', t('admin.updates_conflict_resolve_failed', ['error' => $throwable->getMessage()]));
             }
             redirect(admin_section_url('admin-updates'));
         }
@@ -1593,6 +1619,9 @@ if (method_is_post()) {
         $transactionStarted = false;
 
         try {
+            // All DDL / schema ensures MUST run before beginTransaction().
+            // MySQL implicitly commits on DDL, which would otherwise leave
+            // the later commit() throwing "There is no active transaction".
             ensure_demon_claim_columns($pdo);
             if (!$pdo->inTransaction()) {
                 $pdo->beginTransaction();
@@ -3342,12 +3371,11 @@ render_header(t('admin.title'), 'admin');
             </article>
         </div>
 
-        <?php if (!empty($updatePlan['first_sync'])): ?>
+        <?php if (!empty($updatePlan['first_sync']) && $changedFiles !== []): ?>
             <p class="info-yellow admin-update-message"><?= e(t('admin.updates_first_sync')) ?></p>
         <?php endif; ?>
 
-        <?php if (!empty($updatePlan['first_sync'])): ?>
-        <?php elseif ($conflictFiles !== []): ?>
+        <?php if ($conflictFiles !== []): ?>
             <p class="info-red admin-update-message"><?= e(t('admin.updates_conflict_help')) ?></p>
         <?php elseif (empty($updatePlan['update_available'])): ?>
             <p class="info-green admin-update-message"><?= e(t('admin.updates_current')) ?></p>
@@ -3370,9 +3398,31 @@ render_header(t('admin.title'), 'admin');
                     </div>
                 <?php endforeach; ?>
                 <?php foreach ($conflictFiles as $path): ?>
+                    <?php $remoteConflictFile = is_array($updatePlan['files'][$path] ?? null) ? $updatePlan['files'][$path] : null; ?>
                     <div>
                         <code><?= e((string) $path) ?></code>
-                        <span class="badge error"><?= e(t('admin.updates_conflict')) ?></span>
+                        <div class="admin-update-conflict-actions">
+                            <span class="badge error"><?= e(t('admin.updates_conflict')) ?></span>
+                            <form method="post" action="<?= e(admin_section_url('admin-updates')) ?>">
+                                <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="conflict_path" value="<?= e((string) $path) ?>">
+                                <input type="hidden" name="remote_sha" value="<?= e((string) ($remoteConflictFile['sha'] ?? '')) ?>">
+                                <input type="hidden" name="commit_sha" value="<?= e((string) ($updatePlan['commit_sha'] ?? '')) ?>">
+                                <input type="hidden" name="remote_size" value="<?= (int) ($remoteConflictFile['size'] ?? 0) ?>">
+                                <button class="button white hover small" type="submit" name="action" value="resolve_update_conflict_local">
+                                    <?= e(t('admin.updates_keep_local')) ?>
+                                </button>
+                                <?php if ($remoteConflictFile !== null): ?>
+                                    <button
+                                        class="button danger hover small"
+                                        type="submit"
+                                        name="action"
+                                        value="resolve_update_conflict_remote"
+                                        data-confirm="<?= e(t('admin.updates_use_remote_confirm')) ?>"
+                                    ><?= e(t('admin.updates_use_remote')) ?></button>
+                                <?php endif; ?>
+                            </form>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>
